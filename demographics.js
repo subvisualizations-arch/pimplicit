@@ -4,6 +4,7 @@ define(['questAPI'], function(Quest){
     API.addSequence([
         {
             header: '<h2>About You</h2>',
+            addToGlobal: true,
             questions: [
                 {
                     type: 'dropdown',
