@@ -1,5 +1,5 @@
 /**
- * Manager file for the Ramadan Priming × Arab-Muslim BIAT Experiment
+ * Manager file for the Ramadan Priming x Arab-Muslim BIAT Experiment
  *
  * Design:
  *   1. Consent form
@@ -8,10 +8,10 @@
  *   4. Priming task (reading + comprehension question)
  *   5. Arab-Muslim Brief IAT (~3 min)
  *   6. Explicit attitude measures (manipulation check + thermometer)
- *   7. Debriefing
+ *   7. Debriefing (data sent to OSF via DataPipe)
  *
- * Data is sent to OSF via DataPipe.
- * Replace 'YOUR_DATAPIPE_TOKEN' with your actual token.
+ * Data is sent to OSF via DataPipe REST API.
+ * Experiment ID: XlZHXv4VT8Nd
  */
 
 define(['managerAPI'], function(Manager) {
@@ -19,19 +19,61 @@ define(['managerAPI'], function(Manager) {
     var API = new Manager();
 
     // =============================================
-    // DataPipe configuration
-    // =============================================
-    // IMPORTANT: Replace with your DataPipe token
-    // Uncomment the line below once you have a token:
-    // init_data_pipe(API, 'YOUR_DATAPIPE_TOKEN', 'csv');
-
-    // =============================================
     // Random assignment
     // =============================================
     var condition = Math.random() < 0.5 ? 'ramadan' : 'control';
+    var sessionId = Date.now().toString(36) + Math.random().toString(36).substr(2);
     API.addGlobal({
         condition: condition,
-        sessionId: Date.now().toString(36) + Math.random().toString(36).substr(2)
+        sessionId: sessionId
+    });
+
+    // =============================================
+    // DataPipe configuration
+    // =============================================
+    // Data is sent to DataPipe from the debrief template (debrief.jst)
+    // when the participant reaches the debriefing page.
+    // The XHR interceptor below also catches any MinnoJS logger POST
+    // and reformats it for DataPipe's API.
+
+    var DATAPIPE_ID = 'XlZHXv4VT8Nd';
+    var DATAPIPE_URL = 'https://pipe.jspsych.org/api/data/';
+
+    // Intercept MinnoJS logger requests and redirect to DataPipe
+    (function() {
+        var _open = XMLHttpRequest.prototype.open;
+        var _send = XMLHttpRequest.prototype.send;
+        var alreadySent = false;
+
+        XMLHttpRequest.prototype.open = function(method, url) {
+            this._dpIntercept = (typeof url === 'string' && url.indexOf('pipe.jspsych.org') > -1);
+            return _open.apply(this, arguments);
+        };
+
+        XMLHttpRequest.prototype.send = function(body) {
+            if (this._dpIntercept && body && !alreadySent) {
+                alreadySent = true;
+                var dataStr = typeof body === 'string' ? body : JSON.stringify(body);
+                fetch(DATAPIPE_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        experimentID: DATAPIPE_ID,
+                        filename: sessionId + '_log.json',
+                        data: dataStr
+                    })
+                }).catch(function(e) { console.error('DataPipe logger error:', e); });
+                return;
+            }
+            if (this._dpIntercept) return; // Already sent, skip duplicates
+            return _send.apply(this, arguments);
+        };
+    })();
+
+    // Configure MinnoJS built-in logger (intercepted above)
+    API.addSettings('logger', {
+        pulse: 20,
+        url: DATAPIPE_URL
     });
 
     // =============================================
